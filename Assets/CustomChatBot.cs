@@ -29,6 +29,14 @@ namespace Assets
         private AudioSource audioSource;
         private Dictionary<string, List<AudioClip>> audioDatabase = new Dictionary<string, List<AudioClip>>();
 
+        [Header("Animation Settings")]
+        [Tooltip("拖入场景中虚拟角色的 Animator 组件")]
+        public Animator characterAnimator;
+        [Tooltip("当机器人理解并给出确切回答时触发的 Trigger 名称")]
+        public string successTrigger = "TalkSuccess";
+        [Tooltip("当机器人不理解或进入 LLM 模式时触发的 Trigger 名称")]
+        public string fallbackTrigger = "TalkFallback";
+
         private readonly List<Message> Messages = new List<Message>();
         private List<Rule> rules = new List<Rule>();
         private string fallbackResponse = "I'm sorry, I didn't quite catch that.";
@@ -38,16 +46,32 @@ namespace Assets
             audioSource = GetComponent<AudioSource>();
             LoadRulesFromFile();
             LoadAudioAssets();
+
+            if (characterAnimator == null)
+            {
+                characterAnimator = GetComponentInChildren<Animator>();
+                if (characterAnimator == null)
+                {
+                    Debug.LogError("[ChatBot Debug] 找不到 Animator 组件！请检查是否已将角色拖入 Inspector 或子物体中是否有 Animator。");
+                }
+                else
+                {
+                    Debug.Log("[ChatBot Debug] 自动在子物体中找到了 Animator: " + characterAnimator.name);
+                }
+            }
+            else
+            {
+                Debug.Log("[ChatBot Debug] 已手动分配 Animator: " + characterAnimator.name);
+            }
+
             AddMessage("Bot: Tennis Coach is online.", MessageType.Bot);
         }
 
         private void LoadAudioAssets()
         {
-            // 加载 Audio 文件夹下的所有资源
             AudioClip[] allClips = Resources.LoadAll<AudioClip>("Audio");
             foreach (var clip in allClips)
             {
-                // 统一转小写处理
                 string key = clip.name.ToLower();
                 if (key.Contains("_")) key = key.Split('_')[0];
 
@@ -59,7 +83,11 @@ namespace Assets
         private void LoadRulesFromFile()
         {
             TextAsset dataFile = Resources.Load<TextAsset>("ChatBotData");
-            if (dataFile == null) return;
+            if (dataFile == null)
+            {
+                Debug.LogError("[ChatBot Debug] 找不到 ChatBotData 资源文件，请确保它在 Resources 文件夹下。");
+                return;
+            }
 
             string[] lines = dataFile.text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string line in lines)
@@ -75,6 +103,7 @@ namespace Assets
                 if (keywords.Any(k => k.Trim().ToLower() == "fallback")) fallbackResponse = response;
                 else rules.Add(new Rule(keywords, response));
             }
+            Debug.Log($"[ChatBot Debug] 已加载 {rules.Count} 条对话规则。");
         }
 
         public void SendMessageToBot()
@@ -83,11 +112,11 @@ namespace Assets
             if (string.IsNullOrWhiteSpace(userMessage)) return;
 
             AddMessage($"User: {userMessage}", MessageType.User);
+            Debug.Log($"[ChatBot Debug] 收到用户消息: {userMessage}");
 
             Rule matchedRule = null;
             string bestAudioKey = null;
 
-            // 核心修复：遍历规则时，记录下匹配到的那个关键词
             foreach (var rule in rules)
             {
                 foreach (var k in rule.Keywords)
@@ -96,7 +125,7 @@ namespace Assets
                     if (userMessage.ToLower().Contains(cleanKey))
                     {
                         matchedRule = rule;
-                        bestAudioKey = cleanKey; // 记录匹配到的关键词用于播放音频
+                        bestAudioKey = cleanKey;
                         break;
                     }
                 }
@@ -105,25 +134,59 @@ namespace Assets
 
             if (matchedRule != null)
             {
+                Debug.Log($"[ChatBot Debug] 匹配成功！命中关键词: {bestAudioKey}。准备触发动画: {successTrigger}");
                 AddMessage($"Bot: {matchedRule.Response}", MessageType.Bot);
-                // 修正：优先使用关键词匹配音频，如果关键词没音频，则尝试用该 rule 的第一个关键词
+
                 if (!audioDatabase.ContainsKey(bestAudioKey))
                     bestAudioKey = matchedRule.Keywords[0].Trim().ToLower();
 
                 PlayAudioForIntent(bestAudioKey);
+
+                if (characterAnimator != null)
+                {
+                    if (HasParameter(characterAnimator, successTrigger))
+                    {
+                        characterAnimator.SetTrigger(successTrigger);
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[ChatBot Debug] 警告：Animator 中没有名为 '{successTrigger}' 的 Trigger 参数！请检查 Animator 窗口。");
+                    }
+                }
             }
             else
             {
-                // 调用 LLM 时播放 fallback 音频
+                Debug.Log("[ChatBot Debug] 未匹配到本地规则，发送请求给 LLM。准备触发动画: " + fallbackTrigger);
                 llmClient.SendStreaming(userMessage, null, (fullResponse) =>
                 {
                     AddMessage($"Bot: {fullResponse}", MessageType.Bot);
                     PlayAudioForIntent("fallback");
+
+                    if (characterAnimator != null)
+                    {
+                        if (HasParameter(characterAnimator, fallbackTrigger))
+                        {
+                            characterAnimator.SetTrigger(fallbackTrigger);
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[ChatBot Debug] 警告：Animator 中没有名为 '{fallbackTrigger}' 的 Trigger 参数！");
+                        }
+                    }
                 });
             }
 
             chatBox.text = "";
             chatBox.Select();
+        }
+
+        private bool HasParameter(Animator animator, string paramName)
+        {
+            foreach (AnimatorControllerParameter param in animator.parameters)
+            {
+                if (param.name == paramName) return true;
+            }
+            return false;
         }
 
         private void PlayAudioForIntent(string intent)
