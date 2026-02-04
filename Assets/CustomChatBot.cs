@@ -30,12 +30,15 @@ namespace Assets
         private Dictionary<string, List<AudioClip>> audioDatabase = new Dictionary<string, List<AudioClip>>();
 
         [Header("Animation Settings")]
-        [Tooltip("拖入场景中虚拟角色的 Animator 组件")]
         public Animator characterAnimator;
-        [Tooltip("当机器人理解并给出确切回答时触发的 Trigger 名称")]
+        [Tooltip("通用成功动作")]
         public string successTrigger = "TalkSuccess";
-        [Tooltip("当机器人不理解或进入 LLM 模式时触发的 Trigger 名称")]
+        [Tooltip("没听懂/LLM动作")]
         public string fallbackTrigger = "TalkFallback";
+        [Tooltip("打招呼动作 (hello/hi)")]
+        public string helloTrigger = "TalkHello";
+        [Tooltip("再见动作 (bye/thanks)")]
+        public string byeTrigger = "TalkBye";
 
         private readonly List<Message> Messages = new List<Message>();
         private List<Rule> rules = new List<Rule>();
@@ -52,16 +55,8 @@ namespace Assets
                 characterAnimator = GetComponentInChildren<Animator>();
                 if (characterAnimator == null)
                 {
-                    Debug.LogError("[ChatBot Debug] 找不到 Animator 组件！请检查是否已将角色拖入 Inspector 或子物体中是否有 Animator。");
+                    Debug.LogError("[ChatBot Debug] 错误：依然找不到 Animator！请手动将角色模型拖入 Inspector 窗口的 Character Animator 槽位中。");
                 }
-                else
-                {
-                    Debug.Log("[ChatBot Debug] 自动在子物体中找到了 Animator: " + characterAnimator.name);
-                }
-            }
-            else
-            {
-                Debug.Log("[ChatBot Debug] 已手动分配 Animator: " + characterAnimator.name);
             }
 
             AddMessage("Bot: Tennis Coach is online.", MessageType.Bot);
@@ -83,11 +78,7 @@ namespace Assets
         private void LoadRulesFromFile()
         {
             TextAsset dataFile = Resources.Load<TextAsset>("ChatBotData");
-            if (dataFile == null)
-            {
-                Debug.LogError("[ChatBot Debug] 找不到 ChatBotData 资源文件，请确保它在 Resources 文件夹下。");
-                return;
-            }
+            if (dataFile == null) return;
 
             string[] lines = dataFile.text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string line in lines)
@@ -103,7 +94,6 @@ namespace Assets
                 if (keywords.Any(k => k.Trim().ToLower() == "fallback")) fallbackResponse = response;
                 else rules.Add(new Rule(keywords, response));
             }
-            Debug.Log($"[ChatBot Debug] 已加载 {rules.Count} 条对话规则。");
         }
 
         public void SendMessageToBot()
@@ -112,7 +102,6 @@ namespace Assets
             if (string.IsNullOrWhiteSpace(userMessage)) return;
 
             AddMessage($"User: {userMessage}", MessageType.User);
-            Debug.Log($"[ChatBot Debug] 收到用户消息: {userMessage}");
 
             Rule matchedRule = null;
             string bestAudioKey = null;
@@ -134,7 +123,6 @@ namespace Assets
 
             if (matchedRule != null)
             {
-                Debug.Log($"[ChatBot Debug] 匹配成功！命中关键词: {bestAudioKey}。准备触发动画: {successTrigger}");
                 AddMessage($"Bot: {matchedRule.Response}", MessageType.Bot);
 
                 if (!audioDatabase.ContainsKey(bestAudioKey))
@@ -142,36 +130,44 @@ namespace Assets
 
                 PlayAudioForIntent(bestAudioKey);
 
+                // --- 动画触发逻辑 ---
                 if (characterAnimator != null)
                 {
-                    if (HasParameter(characterAnimator, successTrigger))
+                    string triggerToUse = successTrigger; // 默认
+
+                    // 根据关键词微调动作
+                    if (bestAudioKey.Contains("hello") || bestAudioKey.Contains("hi") || bestAudioKey.Contains("hey"))
                     {
-                        characterAnimator.SetTrigger(successTrigger);
+                        triggerToUse = helloTrigger;
+                    }
+                    else if (bestAudioKey.Contains("bye") || bestAudioKey.Contains("thanks"))
+                    {
+                        triggerToUse = byeTrigger;
+                    }
+
+                    if (HasParameter(characterAnimator, triggerToUse))
+                    {
+                        characterAnimator.SetTrigger(triggerToUse);
+                        Debug.Log($"[ChatBot Debug] 触发特定动作: {triggerToUse}");
                     }
                     else
                     {
-                        Debug.LogWarning($"[ChatBot Debug] 警告：Animator 中没有名为 '{successTrigger}' 的 Trigger 参数！请检查 Animator 窗口。");
+                        characterAnimator.SetTrigger(successTrigger);
+                        Debug.LogWarning($"[ChatBot Debug] 找不到 '{triggerToUse}'，回退到通用动作 '{successTrigger}'");
                     }
                 }
             }
             else
             {
-                Debug.Log("[ChatBot Debug] 未匹配到本地规则，发送请求给 LLM。准备触发动画: " + fallbackTrigger);
                 llmClient.SendStreaming(userMessage, null, (fullResponse) =>
                 {
                     AddMessage($"Bot: {fullResponse}", MessageType.Bot);
                     PlayAudioForIntent("fallback");
 
-                    if (characterAnimator != null)
+                    if (characterAnimator != null && HasParameter(characterAnimator, fallbackTrigger))
                     {
-                        if (HasParameter(characterAnimator, fallbackTrigger))
-                        {
-                            characterAnimator.SetTrigger(fallbackTrigger);
-                        }
-                        else
-                        {
-                            Debug.LogWarning($"[ChatBot Debug] 警告：Animator 中没有名为 '{fallbackTrigger}' 的 Trigger 参数！");
-                        }
+                        characterAnimator.SetTrigger(fallbackTrigger);
+                        Debug.Log("[ChatBot Debug] 触发 Fallback 动作");
                     }
                 });
             }
@@ -182,6 +178,7 @@ namespace Assets
 
         private bool HasParameter(Animator animator, string paramName)
         {
+            if (animator == null) return false;
             foreach (AnimatorControllerParameter param in animator.parameters)
             {
                 if (param.name == paramName) return true;
