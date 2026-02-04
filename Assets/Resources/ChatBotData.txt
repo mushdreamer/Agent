@@ -1,0 +1,15 @@
+hello,hi,hey,greeting|Hello! I am your Tennis Coach Bot. How can I help you with your game today?
+help,commands,what can you do,list|I can help you with: Serve, Forehand, Backhand, Scoring, Equipment, Court Types, and Etiquette. Just ask!
+serve,toss,service,ace|For a basic serve: toss the ball slightly in front, reach up, and snap your wrist through contact. Keep your ritual consistent!
+forehand,swing,topspin|For a forehand: turn your shoulders early, swing low to high for topspin, and follow through across your body.
+backhand,prepare,two-handed|For a backhand: prepare early by turning, keep your non-dominant hand guiding the racket, and finish your swing forward.
+score,scoring,game,deuce,love,point|Tennis scoring goes: Love (0), 15, 30, 40, and Game. If it is 40-40, it is called 'Deuce'.
+racket,strings,equipment,gear|For beginners, choose a light racket with a large head. For strings, synthetic gut is a good starting point for durability.
+shoes,footwear,clay shoes,hard court shoes|Always wear tennis-specific shoes to prevent ankle injuries. Clay courts require special soles for sliding!
+court,grass,clay,hard court,surface|There are 3 main surfaces: Hard (fast & bouncy), Clay (slow & sliding), and Grass (very fast & low bounce).
+etiquette,rules,sportsmanship,fair play|Always wait for your opponent to be ready before serving, and call the lines fairly on your side of the net.
+federer,nadal,djokovic,pro,legend|The 'Big Three' have dominated tennis for years. Each has a unique style: Federer is elegant, Nadal is powerful, and Djokovic is resilient.
+fitness,stamina,cardio,workout|Tennis requires explosive movement. Focus on interval training, core strength, and lateral agility drills.
+bye,goodbye,exit,thanks|You're welcome! Keep practicing and see you on the court soon!
+fallback,unknown,error,miss|I'm sorry, I didn't quite catch that. Could you try rephrasing your question or ask about a specific tennis topic like serving or scoring?
+ambiguous,unsure,restate|I am not sure I understand. To give you the best coaching advice, could you please be more specific about the technique you are interested in?
