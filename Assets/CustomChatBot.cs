@@ -39,10 +39,15 @@ namespace Assets
         public string helloTrigger = "TalkHello";
         [Tooltip("再见动作 (bye/thanks)")]
         public string byeTrigger = "TalkBye";
+        [Tooltip("重复问题时的动作")]
+        public string repeatTrigger = "TalkFallback";
 
         private readonly List<Message> Messages = new List<Message>();
         private List<Rule> rules = new List<Rule>();
         private string fallbackResponse = "I'm sorry, I didn't quite catch that.";
+
+        // --- 记忆机制变量 ---
+        private List<string> userQuestionHistory = new List<string>();
 
         private void Start()
         {
@@ -98,10 +103,22 @@ namespace Assets
 
         public void SendMessageToBot()
         {
-            var userMessage = chatBox.text;
+            var userMessage = chatBox.text.Trim();
             if (string.IsNullOrWhiteSpace(userMessage)) return;
 
             AddMessage($"User: {userMessage}", MessageType.User);
+
+            // --- 记忆机制：检查重复提问 ---
+            string lowerMessage = userMessage.ToLower();
+            if (userQuestionHistory.Contains(lowerMessage))
+            {
+                HandleRepeatQuestion();
+                chatBox.text = "";
+                chatBox.Select();
+                return;
+            }
+
+            userQuestionHistory.Add(lowerMessage);
 
             Rule matchedRule = null;
             string bestAudioKey = null;
@@ -130,12 +147,10 @@ namespace Assets
 
                 PlayAudioForIntent(bestAudioKey);
 
-                // --- 动画触发逻辑 ---
                 if (characterAnimator != null)
                 {
-                    string triggerToUse = successTrigger; // 默认
+                    string triggerToUse = successTrigger;
 
-                    // 根据关键词微调动作
                     if (bestAudioKey.Contains("hello") || bestAudioKey.Contains("hi") || bestAudioKey.Contains("hey"))
                     {
                         triggerToUse = helloTrigger;
@@ -148,12 +163,10 @@ namespace Assets
                     if (HasParameter(characterAnimator, triggerToUse))
                     {
                         characterAnimator.SetTrigger(triggerToUse);
-                        Debug.Log($"[ChatBot Debug] 触发特定动作: {triggerToUse}");
                     }
                     else
                     {
                         characterAnimator.SetTrigger(successTrigger);
-                        Debug.LogWarning($"[ChatBot Debug] 找不到 '{triggerToUse}'，回退到通用动作 '{successTrigger}'");
                     }
                 }
             }
@@ -167,13 +180,30 @@ namespace Assets
                     if (characterAnimator != null && HasParameter(characterAnimator, fallbackTrigger))
                     {
                         characterAnimator.SetTrigger(fallbackTrigger);
-                        Debug.Log("[ChatBot Debug] 触发 Fallback 动作");
                     }
                 });
             }
 
             chatBox.text = "";
             chatBox.Select();
+        }
+
+        // --- 修改后的重复处理逻辑 ---
+        private void HandleRepeatQuestion()
+        {
+            // 这里你可以修改 text 让它和你做的音频内容完全一致
+            string repeatResponse = "You've already asked that! Please try saying something else.";
+            AddMessage($"Bot: {repeatResponse}", MessageType.Bot);
+
+            // 尝试播放 key 为 "repeat" 的音频
+            // 请确保你的音频文件名以 "repeat" 开头，例如 "repeat"
+            PlayAudioForIntent("repeat");
+
+            if (characterAnimator != null && HasParameter(characterAnimator, repeatTrigger))
+            {
+                characterAnimator.SetTrigger(repeatTrigger);
+                Debug.Log("[ChatBot Debug] 播放重复提问的专属音频和动作。");
+            }
         }
 
         private bool HasParameter(Animator animator, string paramName)
@@ -196,6 +226,7 @@ namespace Assets
             }
             else if (audioDatabase.ContainsKey("fallback"))
             {
+                // 如果找不到 repeat 音频，会回退到 fallback
                 audioSource.clip = audioDatabase["fallback"][0];
                 audioSource.Play();
             }
